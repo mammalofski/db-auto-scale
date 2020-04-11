@@ -97,12 +97,14 @@ class DataGenerator:
 
     def hour_usage_score(self):
         hour = self.time.hour
+        minute_percentage = self.time.minute / 60.0
+        x = hour + minute_percentage
         if 0 <= hour < 8:  # if night until morning
-            return .8 + 0.6 * math.sin(math.pi / 16 * (hour + 24))
+            return .8 + .6 * math.sin(math.pi / 16 * (x + 24))
         elif 8 <= hour < 16:  # if the middle of the day
-            return 0.8 + 0.2 * math.sin(math.pi / 8 * (hour - 8))
+            return .8 + .2 * math.sin(math.pi / 8 * (x - 8))
         elif 16 <= hour < 24:  # if after work time until night
-            return .8 + 0.6 * math.sin(math.pi / 16 * hour)
+            return .8 + .6 * math.sin(math.pi / 16 * x)
 
     def month_usage_score(self):
         pass
