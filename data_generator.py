@@ -5,6 +5,7 @@ import random
 import datetime
 import math
 from time import time as T
+from constants import *
 
 
 class Time:
@@ -50,17 +51,23 @@ class Time:
     @property
     def season(self):
         if self.month <= 3:
-            return 'spring'
+            return Seasons.SPRING
         elif 3 < self.month <= 6:
-            return 'summer'
+            return Seasons.SUMMER
         elif 6 < self.month <= 9:
-            return 'fall'
+            return Seasons.FALL
         elif 9 < self.month <= 12:
-            return 'winter'
+            return Seasons.WINTER
 
     @property
     def year(self):
         return self.time.year
+
+    @property
+    def day_of_year(self):
+        first_day_of_year = datetime.datetime(self.year, 1, 1)
+        timedelta = self.time - first_day_of_year
+        return timedelta.days
 
     # ... others like day of month or minutes
 
@@ -75,15 +82,7 @@ class DataGenerator:
         # self.time = datetime.datetime(2019, 1, 1)
 
     def day_of_month_usage_score(self):
-        # mock
-        weekday = self.time.weekday
-        if weekday < 4:
-            return 2
-        else:
-            return 3
-
-    def minute_usage_score(self):
-        pass
+        day_of_month = self.time.day_of_month
 
     def weekday_usage_score(self):
         # weekday = '{0:%a}'.format(self.time.weekday)  -> i.e. Tue
@@ -96,6 +95,11 @@ class DataGenerator:
             return 0.5
 
     def hour_usage_score(self):
+        """
+        usage increases between 0 and 8,
+        reaches its peek between 8 and 16,
+        and decreases between 16 and 24
+        """
         hour = self.time.hour
         minute_percentage = self.time.minute / 60.0
         x = hour + minute_percentage
@@ -110,18 +114,29 @@ class DataGenerator:
         pass
 
     def season_usage_score(self):
-        pass
+        if self.time.season == Seasons.SPRING:
+            return 0.5
+        elif self.time.season == Seasons.SUMMER:
+            return 0.3
+        elif self.time.season == Seasons.FALL:
+            return 0.3
+        elif self.time.season == Seasons.WINTER:
+            return 0.4
 
     def year_usage_score(self):
         pass
 
-    def psodo_random_score(self):
+    def pseudo_random_score(self):
         # mock
         # something like Ali's algorithm
-        return random.randint(-3, 3)
+        return random.randint(0, 0.5)
 
     def service_growth_score(self):
-        pass
+        """
+        a linear growth from 0 to 1 through the year
+        """
+        day_of_year = self.time.day_of_year
+        return day_of_year / 365.0
 
 
     # calculates a score for each measurement in each second
