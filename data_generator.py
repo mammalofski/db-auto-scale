@@ -82,7 +82,14 @@ class DataGenerator:
         # self.time = datetime.datetime(2019, 1, 1)
 
     def day_of_month_usage_score(self):
-        day_of_month = self.time.day_of_month
+        day = self.time.day_of_month
+        if day < 7:
+            return -0.4 / 7 * day + 0.7
+        elif 7 <= day < 20:
+            return 0.2 / 13 * (day - 7) + 0.3
+        elif 20 <= day:
+            return 0.3 / 10 * (day - 20) + 0.5
+
 
     def weekday_usage_score(self):
         # weekday = '{0:%a}'.format(self.time.weekday)  -> i.e. Tue
@@ -93,6 +100,8 @@ class DataGenerator:
             return 0.7
         elif weekday in (3, 4):  # if Thu and Fri
             return 0.5
+        else:
+            return 0
 
     def hour_usage_score(self):
         """
@@ -109,6 +118,8 @@ class DataGenerator:
             return .8 + .2 * math.sin(math.pi / 8 * (x - 8))
         elif 16 <= hour < 24:  # if after work time until night
             return .8 + .6 * math.sin(math.pi / 16 * x)
+        else:
+            return 0
 
     def month_usage_score(self):
         pass
@@ -122,6 +133,8 @@ class DataGenerator:
             return 0.3
         elif self.time.season == Seasons.WINTER:
             return 0.4
+        else:
+            return 0
 
     def year_usage_score(self):
         pass
