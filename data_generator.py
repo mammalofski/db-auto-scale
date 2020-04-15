@@ -4,24 +4,22 @@ import matplotlib.pyplot as plt
 import random
 import datetime
 import math
+import logging
 from time import time as T
 from constants import *
 
 
 class Time:
-    def __init__(self, initial_time=None):
-        if initial_time:
-            self.initial_time = initial_time
-        else:
-            self.initial_time = datetime.datetime(2019, 1, 1)
-
+    def __init__(self, initial_time=datetime.datetime(2019, 1, 1)):
+        self.initial_time = initial_time
         self.seconds_passed = 0
 
     @property
     def time(self):
         return self.initial_time + datetime.timedelta(seconds=self.seconds_passed)
 
-    def incr(self, seconds=1):
+    def live(self, seconds=1):
+        # pass the time: live
         self.seconds_passed += seconds
 
     @property
@@ -73,13 +71,19 @@ class Time:
 
 
 class DataGenerator:
-    def __init__(self):
+    def __init__(self, duration):
         self.data = list()
-        self.attributes = ['second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year',
-                           'VM_load', 'requests_per_second', 'disk_usage']
-
+        self.attributes = [
+            'second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year', 'VM_load',
+            'requests_per_second', 'disk_usage',
+        ]
+        self.score_calculator_methods = [
+            'day_of_month_usage_score', 'weekday_usage_score', 'hour_usage_score', 'season_usage_score',
+            'pseudo_random_score', 'service_growth_score'
+        ]
         self.time = Time(datetime.datetime(2019, 1, 1))
         # self.time = datetime.datetime(2019, 1, 1)
+        self.duration = duration
 
     def day_of_month_usage_score(self):
         day = self.time.day_of_month
@@ -89,7 +93,6 @@ class DataGenerator:
             return 0.2 / 13 * (day - 7) + 0.3
         elif 20 <= day:
             return 0.3 / 10 * (day - 20) + 0.5
-
 
     def weekday_usage_score(self):
         # weekday = '{0:%a}'.format(self.time.weekday)  -> i.e. Tue
@@ -140,9 +143,12 @@ class DataGenerator:
         pass
 
     def pseudo_random_score(self):
-        # mock
-        # something like Ali's algorithm
-        return random.randint(0, 0.5)
+        # throttle_top = 0.7
+        # throttle_bottom = 0.2
+        # growth_dir = 'up'
+        # current_value = 0.2
+        # TODO: generate something meaningful, like going up and down based on a period of time
+        return random.random()
 
     def service_growth_score(self):
         """
@@ -161,6 +167,50 @@ class DataGenerator:
         random_score = (random.random() - 0.5) * 2
         return score * (1 + random_score) * 1000
 
+    def add_row(self, row):
+        # TODO: validate the row  # not that much needed
+        self.data.append(row)
+
+    def new_row(self, score):
+        t = self.time  # making it shorter :D
+        return [
+            t.second, t.minute, t.hour, t.weekday, t.day_of_month, t.season, t.year, score,
+            self.query_per_second_based_on_score(score), 1
+        ]
+
+    def get_score(self):
+        score = 0
+        for method_name in self.score_calculator_methods:
+            method = getattr(self, method_name)
+            score += method()
+        return score
+
+    def generate_data(self):
+        period = self.duration * 24 * 3600
+        t = T()
+        for second in range(period):
+            score = self.get_score()
+            row = self.new_row(score)
+            self.add_row(row)
+            if second % 3600 == 0:
+                print('in second', second, 'the row is', row)
+                print('progress', second / float(period))
+                print('time passed', T() - t)
+            self.time.live()
+
+
+# class DataGenerator:
+#     def __init__(self, duration=365):
+#         # Data Information Expert => die
+#         self.die = DataInfoExpert()
+#         self.time = Time(datetime.datetime(2019, 1, 1))
+#         self.duration = duration
+#         self.dur_in_seconds = duration * 24 * 3600
+#
+#     def generate_data(self):
+#         for second in range(self.dur_in_seconds):
+
+
 
 class Utils:
     @staticmethod
@@ -175,5 +225,8 @@ class Utils:
 
 
 if __name__ == "__main__":
-    pass
+    logging.basicConfig(format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+    die = DataGenerator(30)
+    die.generate_data()
+
 
