@@ -71,19 +71,57 @@ class Time:
 
 
 class DataGenerator:
-    def __init__(self, duration):
-        self.data = list()
+    GENERATE_CHUNK_NO = 24 * 3600  # every 24 hours
+
+    def __init__(self, duration, export=False, initial_time=None):
+        self._temp_data = list()
+        self.export = export
         self.attributes = [
-            'second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year', 'VM_load',
+            'seconds_passed', 'second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year', 'VM_load',
             'requests_per_second', 'disk_usage',
         ]
         self.score_calculator_methods = [
             'day_of_month_usage_score', 'weekday_usage_score', 'hour_usage_score', 'season_usage_score',
             'pseudo_random_score', 'service_growth_score'
         ]
-        self.time = Time(datetime.datetime(2019, 1, 1))
+        self.score_method_impact_factor = {
+            'day_of_month_usage_score': 1,
+            'weekday_usage_score': 1.3,
+            'hour_usage_score': 3,
+            'season_usage_score': .7,
+            'pseudo_random_score': 1,
+            'service_growth_score': 2.5
+        }
+        # create an empty dataframe
+        self._data_frame = pd.DataFrame(columns=self.attributes)
+        if not initial_time:
+            self.time = Time(datetime.datetime(2019, 1, 1))
+        else:
+            self.time = Time(initial_time)
         # self.time = datetime.datetime(2019, 1, 1)
         self.duration = duration
+        self.whole_period = self.duration * 24 * 3600  # in seconds
+
+        self.total_queries = 0
+
+    @property
+    def data(self):
+        return self._temp_data
+
+    @property
+    def data_frame(self):
+        self._update_data_frame()
+        return self._data_frame
+
+    def _update_data_frame(self):
+        if not len(self._temp_data):
+            return
+        print('flushing data into dataframe')
+        new_df = pd.DataFrame(self._temp_data, columns=self.attributes)
+        self._data_frame = self._data_frame.append(new_df)
+        # flush the data
+        del self._temp_data
+        self._temp_data = list()
 
     def day_of_month_usage_score(self):
         day = self.time.day_of_month
@@ -164,52 +202,69 @@ class DataGenerator:
     # the "score" needs to be rational,  no idea how :/
 
     def query_per_second_based_on_score(self, score):
-        random_score = (random.random() - 0.5) * 2
+        random_score = random.triangular(-1, 1, 2)
         return score * (1 + random_score) * 1000
 
     def add_row(self, row):
         # TODO: validate the row  # not that much needed
-        self.data.append(row)
+        self._temp_data.append(row)
 
     def new_row(self, score):
         t = self.time  # making it shorter :D
         return [
-            t.second, t.minute, t.hour, t.weekday, t.day_of_month, t.season, t.year, score,
-            self.query_per_second_based_on_score(score), 1
+            t.seconds_passed, t.second, t.minute, t.hour, t.weekday, t.day_of_month, t.month, t.season, t.year,
+            self.score_to_VMLoad(score), self.query_per_second_based_on_score(score), self.total_queries_to_db_size()
         ]
+
+    def score_to_VMLoad(self, score):
+        # TODO: convert score to vm load
+        return score
+
+    def total_queries_to_db_size(self):
+        """
+        half of the queries are db write, and each occupy 10 KB of space
+        :return total_queries / 2 * 10 (KB):
+        """
+        return self.total_queries * 5
 
     def get_score(self):
         score = 0
         for method_name in self.score_calculator_methods:
             method = getattr(self, method_name)
-            score += method()
+            score += method() * self.score_method_impact_factor.get(method_name, 1)
+        self.total_queries += self.query_per_second_based_on_score(score)
         return score
 
-    def generate_data(self):
-        period = self.duration * 24 * 3600
+    def export_csv(self):
+        # TODO: also include the headers
         t = T()
-        for second in range(period):
-            score = self.get_score()
-            row = self.new_row(score)
+        self.data_frame.to_csv('data.csv')
+        print('export time', T() - t)
+
+    def generate_data(self):
+
+        t = T()
+        current_chunk = 0
+        try:  # a try block, to export the data generated so far, in case of emergency exit
+            while self.GENERATE_CHUNK_NO * (current_chunk + 1) <= self.whole_period:
+                self.generate_chunk_of_data()
+                self._update_data_frame()  # this method flushes temp data and imports it into the dataframe
+                current_chunk += 1
+        finally:
+            if self.export:
+                self.export_csv()
+
+    def generate_chunk_of_data(self):
+        for second in range(self.GENERATE_CHUNK_NO):
+            score = self.get_score()  # calculate score based on current time
+            row = self.new_row(score)  # generate a new row of data
             self.add_row(row)
-            if second % 3600 == 0:
-                print('in second', second, 'the row is', row)
-                print('progress', second / float(period))
-                print('time passed', T() - t)
-            self.time.live()
-
-
-# class DataGenerator:
-#     def __init__(self, duration=365):
-#         # Data Information Expert => die
-#         self.die = DataInfoExpert()
-#         self.time = Time(datetime.datetime(2019, 1, 1))
-#         self.duration = duration
-#         self.dur_in_seconds = duration * 24 * 3600
-#
-#     def generate_data(self):
-#         for second in range(self.dur_in_seconds):
-
+            # just some logs, every 10 hours
+            if second % 36000 == 0:
+                print('progress', self.time.seconds_passed / float(self.whole_period) * 100)
+                x = T() - t
+                print('time passed', int(x / 60), 'minutes and', int(x % 60), 'seconds')
+            self.time.live()  # pass the time (go ahead for one second)
 
 
 class Utils:
@@ -225,8 +280,11 @@ class Utils:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
-    die = DataGenerator(30)
+    t = T()
+    logging.basicConfig(filename='log.log')
+    die = DataGenerator(365, export=True)
     die.generate_data()
+    x = T() - t
+    print('Finished in', int(x / 60), 'minutes and', x % 60, 'seconds')
 
 
