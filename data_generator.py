@@ -77,20 +77,23 @@ class DataGenerator:
         self._temp_data = list()
         self.export = export
         self.attributes = [
-            'seconds_passed', 'second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year', 'VM_load',
+            'second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year',
+            'VM_load',
             'requests_per_second', 'disk_usage',
         ]
+        # methods that have a role of generating a score
         self.score_calculator_methods = [
             'day_of_month_usage_score', 'weekday_usage_score', 'hour_usage_score', 'season_usage_score',
             'pseudo_random_score', 'service_growth_score'
         ]
+        # how important each factor is
         self.score_method_impact_factor = {
             'day_of_month_usage_score': 1,
             'weekday_usage_score': 1.3,
             'hour_usage_score': 3,
             'season_usage_score': .7,
             'pseudo_random_score': 1,
-            'service_growth_score': 2.5
+            'service_growth_score': 3,
         }
         # create an empty dataframe
         self._data_frame = pd.DataFrame(columns=self.attributes)
@@ -103,6 +106,14 @@ class DataGenerator:
         self.whole_period = self.duration * 24 * 3600  # in seconds
 
         self.total_queries = 0
+
+        # pseudo random generator element local variables: (some may be temp variables)
+        self._last_random_score = 0.4
+        self._random_growth_direction = RandomDirection.UP
+        self._high_threshold = 0.7
+        self._low_threshold = 0.2
+        self._abs_of_max_change_value = 0.03
+        self._abs_of_min_change_value = 0.01
 
     @property
     def data(self):
@@ -162,9 +173,6 @@ class DataGenerator:
         else:
             return 0
 
-    def month_usage_score(self):
-        pass
-
     def season_usage_score(self):
         if self.time.season == Seasons.SPRING:
             return 0.5
@@ -181,12 +189,36 @@ class DataGenerator:
         pass
 
     def pseudo_random_score(self):
-        # throttle_top = 0.7
-        # throttle_bottom = 0.2
-        # growth_dir = 'up'
-        # current_value = 0.2
-        # TODO: generate something meaningful, like going up and down based on a period of time
-        return random.random()
+        """
+            generates a pseudo_random_score based on the following algorithm:
+                increase the value until it hits some random high threshold value
+                    (by generating a random score that is probably higher than the previous score)
+                then decrease the value until it hits some random low threshold value
+                    (by generating a random score that is probably lower than the previous score)
+        """
+        # if current direction us up
+        if self._random_growth_direction == RandomDirection.UP:
+            # generate a random score that is probably higher than the previous score (thus going higher)
+            next_score = random.uniform(self._last_random_score - self._abs_of_min_change_value,
+                                        self._last_random_score + self._abs_of_max_change_value)
+            # if hit the threshold, then reverse the direction
+            if next_score > self._high_threshold:
+                self._random_growth_direction = RandomDirection.DOWN
+
+        # if current direction us down
+        elif self._random_growth_direction == RandomDirection.DOWN:
+            # generate a random score that is probably lower than the previous score (thus going lower)
+            next_score = random.uniform(self._last_random_score - self._abs_of_max_change_value,
+                                        self._last_random_score + self._abs_of_min_change_value)
+            # if hit the threshold, then reverse the direction
+            if next_score < self._low_threshold:
+                self._random_growth_direction = RandomDirection.DOWN
+
+        # update thresholds
+        self._high_threshold = random.uniform(0.65, 0.80)
+        self._low_threshold = random.uniform(0.3, self._high_threshold - 0.1)
+
+        return next_score
 
     def service_growth_score(self):
         """
@@ -194,7 +226,6 @@ class DataGenerator:
         """
         day_of_year = self.time.day_of_year
         return day_of_year / 365.0
-
 
     # calculates a score for each measurement in each second
     # then aggregates them for each second to make a rational workload for database
@@ -212,7 +243,7 @@ class DataGenerator:
     def new_row(self, score):
         t = self.time  # making it shorter :D
         return [
-            t.seconds_passed, t.second, t.minute, t.hour, t.weekday, t.day_of_month, t.month, t.season, t.year,
+            t.second, t.minute, t.hour, t.weekday, t.day_of_month, t.month, t.season, t.year,
             self.score_to_VMLoad(score), self.query_per_second_based_on_score(score), self.total_queries_to_db_size()
         ]
 
@@ -237,13 +268,12 @@ class DataGenerator:
 
     def export_csv(self):
         # TODO: also include the headers
+        print('exporting as csv ... ')
         t = T()
         self.data_frame.to_csv('data.csv')
         print('export time', T() - t)
 
     def generate_data(self):
-
-        t = T()
         current_chunk = 0
         try:  # a try block, to export the data generated so far, in case of emergency exit
             while self.GENERATE_CHUNK_NO * (current_chunk + 1) <= self.whole_period:
@@ -261,9 +291,14 @@ class DataGenerator:
             self.add_row(row)
             # just some logs, every 10 hours
             if second % 36000 == 0:
-                print('progress', self.time.seconds_passed / float(self.whole_period) * 100)
                 x = T() - t
+                progress = self.time.seconds_passed / float(self.whole_period) * 100
+                if progress > 0.1:
+                    remaining = (100 - progress) * x / progress
                 print('time passed', int(x / 60), 'minutes and', int(x % 60), 'seconds')
+                if progress > 0.1:
+                    print('time remaining:', int(remaining / 60), 'minutes and', int(remaining % 60), 'seconds')
+                print('progress', progress)
             self.time.live()  # pass the time (go ahead for one second)
 
 
@@ -281,10 +316,7 @@ class Utils:
 
 if __name__ == "__main__":
     t = T()
-    logging.basicConfig(filename='log.log')
-    die = DataGenerator(365, export=True)
+    die = DataGenerator(10, export=True)
     die.generate_data()
     x = T() - t
-    print('Finished in', int(x / 60), 'minutes and', x % 60, 'seconds')
-
-
+    print('Finished in', int(x / 60), 'minutes and', int(x % 60), 'seconds')
