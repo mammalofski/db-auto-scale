@@ -84,20 +84,22 @@ class DataGenerator:
         # methods that have a role of generating a score
         self.score_calculator_methods = [
             'day_of_month_usage_score', 'weekday_usage_score', 'hour_usage_score', 'season_usage_score',
-            'pseudo_random_score', 'service_growth_score'
+            'pseudo_random_score', 'service_growth_score', 'anomaly_score'
         ]
         # how important each factor is
         self.score_method_impact_factor = {
             'day_of_month_usage_score': 1,
-            'weekday_usage_score': 1.3,
-            'hour_usage_score': 3,
-            'season_usage_score': .7,
-            'pseudo_random_score': 1,
-            'service_growth_score': 3,
+            'weekday_usage_score': 1,
+            'hour_usage_score': 2,
+            'season_usage_score': 1,
+            'pseudo_random_score': 1.5,
+            'service_growth_score': 1,
+            'anomaly_score': 1
         }
         # create an empty dataframe
         self._data_frame = pd.DataFrame(columns=self.attributes)
         if not initial_time:
+            # self.time = Time(datetime.datetime(2019, 1, 1) + datetime.timedelta(days=180))
             self.time = Time(datetime.datetime(2019, 1, 1))
         else:
             self.time = Time(initial_time)
@@ -110,8 +112,8 @@ class DataGenerator:
         # pseudo random generator element local variables: (some may be temp variables)
         self._last_random_score = 0.4
         self._random_growth_direction = RandomDirection.UP
-        self._high_threshold = 0.7
-        self._low_threshold = 0.2
+        self._high_threshold = 0.6
+        self._low_threshold = -0.2
         self._abs_of_max_change_value = 0.03
         self._abs_of_min_change_value = 0.01
 
@@ -204,6 +206,8 @@ class DataGenerator:
             # if hit the threshold, then reverse the direction
             if next_score > self._high_threshold:
                 self._random_growth_direction = RandomDirection.DOWN
+                # update thresholds
+                self._low_threshold = random.uniform(-0.2, self._high_threshold - 0.1)
 
         # if current direction us down
         elif self._random_growth_direction == RandomDirection.DOWN:
@@ -212,13 +216,23 @@ class DataGenerator:
                                         self._last_random_score + self._abs_of_min_change_value)
             # if hit the threshold, then reverse the direction
             if next_score < self._low_threshold:
-                self._random_growth_direction = RandomDirection.DOWN
+                self._random_growth_direction = RandomDirection.UP
+                # update thresholds
+                self._high_threshold = random.uniform(self._low_threshold + 0.1, 0.8)
 
-        # update thresholds
-        self._high_threshold = random.uniform(0.65, 0.80)
-        self._low_threshold = random.uniform(0.3, self._high_threshold - 0.1)
+        # rand = random.vonmisesvariate(0.5, 63)  # with this random func and this args, by average, the rand value will be about 6 for 3 times a day
+        # if rand > 3:
+        #     next_score *= rand / 2
 
+        self._last_random_score = next_score
         return next_score
+
+    def anomaly_score(self):
+        # an anomaly once a day
+        rand = random.vonmisesvariate(0.5, 71)
+        if rand > 2:
+            return rand / 2
+        return 0
 
     def service_growth_score(self):
         """
@@ -261,8 +275,11 @@ class DataGenerator:
     def get_score(self):
         score = 0
         for method_name in self.score_calculator_methods:
+            if method_name == 'hour_usage_score':
+                continue
             method = getattr(self, method_name)
             score += method() * self.score_method_impact_factor.get(method_name, 1)
+        score *= self.hour_usage_score() * self.score_method_impact_factor.get('hour_usage_score', 1)
         self.total_queries += self.query_per_second_based_on_score(score)
         return score
 
@@ -270,7 +287,7 @@ class DataGenerator:
         # TODO: also include the headers
         print('exporting as csv ... ')
         t = T()
-        self.data_frame.to_csv('data.csv')
+        self.data_frame.to_csv('data2.csv')
         print('export time', T() - t)
 
     def generate_data(self):
@@ -313,10 +330,20 @@ class Utils:
         plt.plot(domain, result)
         fig.show()
 
+    @staticmethod
+    def draw_func_static_args(func, domain_from=-20, domain_to=20, *args):
+        domain = np.arange(domain_from, domain_to, 0.1)
+        result = np.arange(domain_from, domain_to, 0.1)
+        for i in range(len(domain)):
+            result[i] = func(*args)
+        fig = plt.figure(1)
+        plt.plot(domain, result)
+        fig.show()
+
 
 if __name__ == "__main__":
     t = T()
-    die = DataGenerator(10, export=True)
+    die = DataGenerator(1, export=True)
     die.generate_data()
     x = T() - t
     print('Finished in', int(x / 60), 'minutes and', int(x % 60), 'seconds')
