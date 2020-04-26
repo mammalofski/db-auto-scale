@@ -229,9 +229,9 @@ class DataGenerator:
 
     def anomaly_score(self):
         # an anomaly once a day
-        rand = random.vonmisesvariate(0.5, 71)
-        if rand > 2:
-            return rand / 2
+        # rand = random.vonmisesvariate(0.5, 71)
+        # if rand > 2:
+        #     return rand / 2
         return 0
 
     def service_growth_score(self):
@@ -287,7 +287,7 @@ class DataGenerator:
         # TODO: also include the headers
         print('exporting as csv ... ')
         t = T()
-        self.data_frame.to_csv('data2.csv')
+        self.data_frame.to_csv('data.csv')
         print('export time', T() - t)
 
     def generate_data(self):
@@ -343,7 +343,7 @@ class Utils:
 
 if __name__ == "__main__":
     t = T()
-    die = DataGenerator(1, export=True)
+    die = DataGenerator(10, export=True)
     die.generate_data()
     x = T() - t
     print('Finished in', int(x / 60), 'minutes and', int(x % 60), 'seconds')
