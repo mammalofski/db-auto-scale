@@ -72,12 +72,13 @@ class Time:
 
 class DataGenerator:
     GENERATE_CHUNK_NO = 24 * 3600  # every 24 hours
+    TIME_PASS = 5
 
     def __init__(self, duration, export=False, initial_time=None):
         self._temp_data = list()
         self.export = export
         self.attributes = [
-            'second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year',
+            'seconds_passed', 'second', 'minute', 'hour', 'day_of_week', 'day_of_month', 'month', 'season', 'year',
             'VM_load',
             'requests_per_second', 'disk_usage',
         ]
@@ -105,7 +106,7 @@ class DataGenerator:
             self.time = Time(initial_time)
         # self.time = datetime.datetime(2019, 1, 1)
         self.duration = duration
-        self.whole_period = self.duration * 24 * 3600  # in seconds
+        self.whole_period = self.duration * 24 * 3600 / self.TIME_PASS  # in seconds
 
         self.total_queries = 0
 
@@ -114,8 +115,8 @@ class DataGenerator:
         self._random_growth_direction = RandomDirection.UP
         self._high_threshold = 0.6
         self._low_threshold = -0.2
-        self._abs_of_max_change_value = 0.03
-        self._abs_of_min_change_value = 0.01
+        self._abs_of_max_change_value = 0.15
+        self._abs_of_min_change_value = 0.05
 
     @property
     def data(self):
@@ -257,7 +258,7 @@ class DataGenerator:
     def new_row(self, score):
         t = self.time  # making it shorter :D
         return [
-            t.second, t.minute, t.hour, t.weekday, t.day_of_month, t.month, t.season, t.year,
+            t.seconds_passed, t.second, t.minute, t.hour, t.weekday, t.day_of_month, t.month, t.season, t.year,
             self.score_to_VMLoad(score), self.query_per_second_based_on_score(score), self.total_queries_to_db_size()
         ]
 
@@ -287,6 +288,7 @@ class DataGenerator:
         # TODO: also include the headers
         print('exporting as csv ... ')
         t = T()
+        self.data_frame.index.name = 'index'
         self.data_frame.to_csv('data.csv')
         print('export time', T() - t)
 
@@ -309,14 +311,14 @@ class DataGenerator:
             # just some logs, every 10 hours
             if second % 36000 == 0:
                 x = T() - t
-                progress = self.time.seconds_passed / float(self.whole_period) * 100
+                progress = self.time.seconds_passed / self.TIME_PASS / float(self.whole_period) * 100
                 if progress > 0.1:
                     remaining = (100 - progress) * x / progress
                 print('time passed', int(x / 60), 'minutes and', int(x % 60), 'seconds')
                 if progress > 0.1:
                     print('time remaining:', int(remaining / 60), 'minutes and', int(remaining % 60), 'seconds')
                 print('progress', progress)
-            self.time.live()  # pass the time (go ahead for one second)
+            self.time.live(seconds=self.TIME_PASS)  # pass the time (go ahead for one second)
 
 
 class Utils:
@@ -343,7 +345,7 @@ class Utils:
 
 if __name__ == "__main__":
     t = T()
-    die = DataGenerator(10, export=True)
+    die = DataGenerator(120, export=True)
     die.generate_data()
     x = T() - t
     print('Finished in', int(x / 60), 'minutes and', int(x % 60), 'seconds')
